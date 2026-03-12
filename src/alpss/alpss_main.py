@@ -159,20 +159,23 @@ def alpss_main(**inputs):
     # --- Phase 2b: Full uncertainty analysis ---
     fua_out = _default_uncertainty_output()
     uncertainty_ok = False
-    try:
-        logger.info("Running full uncertainty analysis...")
-        fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
-        uncertainty_ok = True
-        logger.info(
-            "Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e",
-            fua_out["spall_uncert"],
-            fua_out["strain_rate_uncert"],
-        )
-    except Exception as e:
-        errors.append(f"uncertainty: {e}")
-        logger.error("Error in uncertainty analysis: %s", str(e))
-        logger.error("Traceback: %s", traceback.format_exc())
-        logger.info("Continuing without uncertainty analysis.")
+    if not spall_ok:
+        logger.info("Skipping uncertainty analysis: spall analysis did not succeed.")
+    else:
+        try:
+            logger.info("Running full uncertainty analysis...")
+            fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
+            uncertainty_ok = True
+            logger.info(
+                "Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e",
+                fua_out["spall_uncert"],
+                fua_out["strain_rate_uncert"],
+            )
+        except Exception as e:
+            errors.append(f"uncertainty: {e}")
+            logger.error("Error in uncertainty analysis: %s", str(e))
+            logger.error("Traceback: %s", traceback.format_exc())
+            logger.info("Continuing without uncertainty analysis.")
 
     # --- Phase 2c: HEL detection (optional) ---
     hel_out = _default_hel_output()
