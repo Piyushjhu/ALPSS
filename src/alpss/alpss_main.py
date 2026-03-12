@@ -249,13 +249,6 @@ def alpss_main(**inputs):
                 sample_name=os.path.basename(inputs.get("filepath", "")),
                 sample_material=inputs.get("material", ""),
             )
-            if inputs.get("save_data"):
-                filename = os.path.splitext(os.path.basename(inputs["filepath"]))[0]
-                hel_path = os.path.join(inputs["out_files_dir"], f"{filename}-hel.png")
-                hel_fig.savefig(
-                    hel_path, dpi=inputs.get("plot_dpi", 300), facecolor="w"
-                )
-                logger.info("HEL diagnostic plot saved to %s", hel_path)
             if inputs.get("display_plots") != "yes":
                 import matplotlib.pyplot as _plt
 
@@ -279,6 +272,7 @@ def alpss_main(**inputs):
         start_time,
         end_time,
         fig,
+        hel_fig=hel_fig,
         hel_out=hel_out if hel_enabled else None,
         spall_ok=spall_ok,
         uncertainty_ok=uncertainty_ok,
