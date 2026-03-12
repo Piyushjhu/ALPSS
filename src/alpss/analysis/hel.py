@@ -184,7 +184,7 @@ def hel_detection(
 
     # Step 5: Extract HEL properties from earliest plateau
     if seg_start is None or seg_end is None:
-        msg = "HEL: no qualifying plateau found"
+        msg = "no qualifying hel plateau found"
         logger.info(msg)
         return HELResult(
             ok=False,
