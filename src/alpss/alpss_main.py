@@ -113,9 +113,11 @@ def alpss_main(**inputs):
 
     # --- Phase 2a: Spall analysis ---
     sa_out = _default_spall_output()
+    spall_ok = False
     try:
         logger.info("Running spall analysis...")
         sa_out = spall_analysis(vc_out, iua_out, **inputs)
+        spall_ok = True
         logger.info("Spall analysis complete: spall strength=%.4f, strain rate=%.4e", sa_out["spall_strength_est"], sa_out["strain_rate_est"])
     except Exception as e:
         logger.error("Error in spall analysis: %s", str(e))
@@ -124,9 +126,11 @@ def alpss_main(**inputs):
 
     # --- Phase 2b: Full uncertainty analysis ---
     fua_out = _default_uncertainty_output()
+    uncertainty_ok = False
     try:
         logger.info("Running full uncertainty analysis...")
         fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
+        uncertainty_ok = True
         logger.info("Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e", fua_out["spall_uncert"], fua_out["strain_rate_uncert"])
     except Exception as e:
         logger.error("Error in uncertainty analysis: %s", str(e))
@@ -226,6 +230,8 @@ def alpss_main(**inputs):
         end_time,
         fig,
         hel_out=hel_out if hel_enabled else None,
+        spall_ok=spall_ok,
+        uncertainty_ok=uncertainty_ok,
         **inputs,
     )
 

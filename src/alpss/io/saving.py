@@ -19,6 +19,8 @@ def save(
     end_time,
     fig,
     hel_out=None,
+    spall_ok=True,
+    uncertainty_ok=True,
     **inputs,
 ):
     filename = os.path.splitext(os.path.basename(inputs["filepath"]))[0]
@@ -107,6 +109,8 @@ def save(
         "Time": start_time.strftime("%I:%M %p"),
         "File Name": os.path.basename(inputs["filepath"]),
         "Velocity OK": True,
+        "Spall OK": spall_ok,
+        "Uncertainty OK": uncertainty_ok,
         "Run Time": (end_time - start_time),
         "Velocity at Max Compression": sa_out["v_max_comp"],
         "Time at Max Compression": sa_out["t_max_comp"],
