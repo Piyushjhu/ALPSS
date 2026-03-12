@@ -67,7 +67,15 @@ def alpss_main(**inputs):
     try:
         start_time = datetime.now()
         data = extract_data(inputs)
-        logger.info("Data extracted from %s", os.path.basename(inputs.get("filepath", "")))
+        logger.info(
+            "Signal: %s | %d samples | %.2f GS/s | window %.1f–%.1f µs (%.1f µs duration)",
+            os.path.basename(inputs.get("filepath", "")),
+            len(data),
+            inputs.get("sample_rate", 0) / 1e9,
+            inputs.get("time_to_skip", 0) / 1e-6,
+            (inputs.get("time_to_skip", 0) + inputs.get("time_to_take", 0)) / 1e-6,
+            inputs.get("time_to_take", 0) / 1e-6,
+        )
 
         # function to find the spall signal domain of interest
         logger.info("Finding spall domain of interest...")
