@@ -17,6 +17,7 @@ import traceback
 import logging
 import numpy as np
 
+
 def setup_alpss_logger():
     logger = logging.getLogger("alpss")
 
@@ -24,14 +25,19 @@ def setup_alpss_logger():
         # Standalone mode → set up a default
         handler = logging.StreamHandler()
         handler.setLevel(logging.INFO)
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+        )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
-        logger.propagate = False  # prevent duplicate output via root logger (e.g. in Jupyter)
+        logger.propagate = (
+            False  # prevent duplicate output via root logger (e.g. in Jupyter)
+        )
 
     # Otherwise (if processor already set things up) → just use its config
     return logger
+
 
 logger = setup_alpss_logger()
 
@@ -39,11 +45,18 @@ logger = setup_alpss_logger()
 def _default_spall_output():
     """Return NaN-filled spall analysis output for graceful degradation."""
     return {
-        "t_max_comp": np.nan, "t_max_ten": np.nan, "t_rc": np.nan,
-        "v_max_comp": np.nan, "v_max_ten": np.nan, "v_rc": np.nan,
-        "spall_strength_est": np.nan, "strain_rate_est": np.nan,
-        "peak_velocity_freq_uncert": np.nan, "peak_velocity_vel_uncert": np.nan,
-        "max_ten_freq_uncert": np.nan, "max_ten_vel_uncert": np.nan,
+        "t_max_comp": np.nan,
+        "t_max_ten": np.nan,
+        "t_rc": np.nan,
+        "v_max_comp": np.nan,
+        "v_max_ten": np.nan,
+        "v_rc": np.nan,
+        "spall_strength_est": np.nan,
+        "strain_rate_est": np.nan,
+        "peak_velocity_freq_uncert": np.nan,
+        "peak_velocity_vel_uncert": np.nan,
+        "max_ten_freq_uncert": np.nan,
+        "max_ten_vel_uncert": np.nan,
     }
 
 
@@ -55,6 +68,7 @@ def _default_uncertainty_output():
 def _default_hel_output():
     """Return a failed HEL result for graceful degradation."""
     from alpss.analysis.hel import HELResult
+
     return HELResult(ok=False)
 
 
@@ -80,7 +94,11 @@ def alpss_main(**inputs):
         # function to find the spall signal domain of interest
         logger.info("Finding spall domain of interest...")
         sdf_out = spall_doi_finder(data, **inputs)
-        logger.info("Spall DOI found: start=%.3e s, end=%.3e s", sdf_out["t_doi_start"], sdf_out["t_doi_end"])
+        logger.info(
+            "Spall DOI found: start=%.3e s, end=%.3e s",
+            sdf_out["t_doi_start"],
+            sdf_out["t_doi_end"],
+        )
 
         # function to find the carrier frequency
         logger.info("Estimating carrier frequency...")
@@ -127,7 +145,11 @@ def alpss_main(**inputs):
         logger.info("Running spall analysis...")
         sa_out = spall_analysis(vc_out, iua_out, **inputs)
         spall_ok = True
-        logger.info("Spall analysis complete: spall strength=%.4f, strain rate=%.4e", sa_out["spall_strength_est"], sa_out["strain_rate_est"])
+        logger.info(
+            "Spall analysis complete: spall strength=%.4f, strain rate=%.4e",
+            sa_out["spall_strength_est"],
+            sa_out["strain_rate_est"],
+        )
     except Exception as e:
         errors.append(f"spall: {e}")
         logger.error("Error in spall analysis: %s", str(e))
@@ -141,7 +163,11 @@ def alpss_main(**inputs):
         logger.info("Running full uncertainty analysis...")
         fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
         uncertainty_ok = True
-        logger.info("Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e", fua_out["spall_uncert"], fua_out["strain_rate_uncert"])
+        logger.info(
+            "Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e",
+            fua_out["spall_uncert"],
+            fua_out["strain_rate_uncert"],
+        )
     except Exception as e:
         errors.append(f"uncertainty: {e}")
         logger.error("Error in uncertainty analysis: %s", str(e))
@@ -170,7 +196,12 @@ def alpss_main(**inputs):
                 C_L=inputs.get("C_L", None),
             )
             if hel_out.ok:
-                logger.info("HEL detected: strength=%.4f GPa, FSV=%.2f m/s, time=%.2f ns", hel_out.strength_gpa, hel_out.free_surface_velocity, hel_out.time_detection_ns)
+                logger.info(
+                    "HEL detected: strength=%.4f GPa, FSV=%.2f m/s, time=%.2f ns",
+                    hel_out.strength_gpa,
+                    hel_out.free_surface_velocity,
+                    hel_out.time_detection_ns,
+                )
             else:
                 logger.info("HEL detection complete: no HEL found")
         except Exception as e:
@@ -215,17 +246,18 @@ def alpss_main(**inputs):
             if inputs.get("save_data"):
                 filename = os.path.splitext(os.path.basename(inputs["filepath"]))[0]
                 hel_path = os.path.join(inputs["out_files_dir"], f"{filename}-hel.png")
-                hel_fig.savefig(hel_path, dpi=inputs.get("plot_dpi", 300), facecolor="w")
+                hel_fig.savefig(
+                    hel_path, dpi=inputs.get("plot_dpi", 300), facecolor="w"
+                )
                 logger.info("HEL diagnostic plot saved to %s", hel_path)
             if inputs.get("display_plots") != "yes":
                 import matplotlib.pyplot as _plt
+
                 _plt.close(hel_fig)
         except Exception as e:
             logger.error("Error generating HEL plot: %s", str(e))
 
-    logger.info(
-        f"\nFull runtime: {end_time_final - start_time}\n"
-    )
+    logger.info(f"\nFull runtime: {end_time_final - start_time}\n")
 
     logger.info("Plots generated")
 
@@ -244,7 +276,7 @@ def alpss_main(**inputs):
         hel_out=hel_out if hel_enabled else None,
         spall_ok=spall_ok,
         uncertainty_ok=uncertainty_ok,
-        error_msg="; ".join(errors) if errors else None,
+        error_msg="; ".join(errors) if errors else "",
         **inputs,
     )
 
