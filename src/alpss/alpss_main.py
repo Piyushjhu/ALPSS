@@ -203,6 +203,8 @@ def alpss_main(**inputs):
                     hel_out.time_detection_ns,
                 )
             else:
+                if hel_out.error_message:
+                    errors.append(f"hel: {hel_out.error_message}")
                 logger.info("HEL detection complete: no HEL found")
         except Exception as e:
             errors.append(f"hel: {e}")
