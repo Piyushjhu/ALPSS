@@ -207,7 +207,7 @@ def hel_detection(
 
     # Step 6: Validate minimum velocity
     if abs(fsv) < min_velocity:
-        msg = f"rejected - HEL detected velocity {abs(fsv):.2f} m/s < threshold {min_velocity:.1f} m/s"
+        msg = f"rejected - HEL detected velocity < threshold {min_velocity:.1f} m/s"
         logger.info(msg)
         return HELResult(
             ok=False,
