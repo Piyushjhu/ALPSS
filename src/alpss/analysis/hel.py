@@ -118,7 +118,7 @@ def hel_detection(
     # Step 1: Filter out NaN and high-uncertainty points
     valid_mask = ~np.isnan(velocity)
     if np.sum(valid_mask) <= 5:
-        raise ValueError("HEL: insufficient valid data points")
+        raise ValueError("insufficient valid data points for HEL")
 
     time_clean = time_ns[valid_mask]
     vel_clean = velocity[valid_mask]
@@ -147,7 +147,7 @@ def hel_detection(
     u_win = unc_clean[search_mask]
 
     if len(t_win) < 10:
-        raise ValueError("HEL: insufficient data points in search window")
+        raise ValueError("insufficient data points in HEL search window")
 
     # Step 3: Compute smoothed gradient and convert to angles
     gradient = np.gradient(v_win, t_win)
@@ -184,7 +184,7 @@ def hel_detection(
 
     # Step 5: Extract HEL properties from earliest plateau
     if seg_start is None or seg_end is None:
-        msg = "no qualifying hel plateau found"
+        msg = "no qualifying HEL plateau found"
         logger.info(msg)
         return HELResult(
             ok=False,
@@ -207,7 +207,7 @@ def hel_detection(
 
     # Step 6: Validate minimum velocity
     if abs(fsv) < min_velocity:
-        msg = f"HEL rejected: detected velocity {abs(fsv):.2f} m/s below threshold {min_velocity:.1f} m/s"
+        msg = f"rejected - HEL detected velocity {abs(fsv):.2f} m/s < threshold {min_velocity:.1f} m/s"
         logger.info(msg)
         return HELResult(
             ok=False,

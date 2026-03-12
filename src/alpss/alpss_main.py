@@ -161,6 +161,7 @@ def alpss_main(**inputs):
     uncertainty_ok = False
     if not spall_ok:
         logger.info("Skipping uncertainty analysis: spall analysis did not succeed.")
+        errors.append(f"uncertainty: analysis skipped due to spall_ok=false")
     else:
         try:
             logger.info("Running full uncertainty analysis...")
