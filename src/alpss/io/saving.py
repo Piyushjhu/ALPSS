@@ -21,6 +21,7 @@ def save(
     hel_out=None,
     spall_ok=True,
     uncertainty_ok=True,
+    error_msg=None,
     **inputs,
 ):
     filename = os.path.splitext(os.path.basename(inputs["filepath"]))[0]
@@ -111,6 +112,7 @@ def save(
         "Velocity OK": True,
         "Spall OK": spall_ok,
         "Uncertainty OK": uncertainty_ok,
+        "Error Message": error_msg,
         "Run Time": (end_time - start_time),
         "Velocity at Max Compression": sa_out["v_max_comp"],
         "Time at Max Compression": sa_out["t_max_comp"],

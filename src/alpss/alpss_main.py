@@ -120,6 +120,7 @@ def alpss_main(**inputs):
         raise
 
     # --- Phase 2a: Spall analysis ---
+    errors = []
     sa_out = _default_spall_output()
     spall_ok = False
     try:
@@ -128,6 +129,7 @@ def alpss_main(**inputs):
         spall_ok = True
         logger.info("Spall analysis complete: spall strength=%.4f, strain rate=%.4e", sa_out["spall_strength_est"], sa_out["strain_rate_est"])
     except Exception as e:
+        errors.append(f"spall: {e}")
         logger.error("Error in spall analysis: %s", str(e))
         logger.error("Traceback: %s", traceback.format_exc())
         logger.info("Continuing without spall analysis.")
@@ -141,6 +143,7 @@ def alpss_main(**inputs):
         uncertainty_ok = True
         logger.info("Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e", fua_out["spall_uncert"], fua_out["strain_rate_uncert"])
     except Exception as e:
+        errors.append(f"uncertainty: {e}")
         logger.error("Error in uncertainty analysis: %s", str(e))
         logger.error("Traceback: %s", traceback.format_exc())
         logger.info("Continuing without uncertainty analysis.")
@@ -171,6 +174,7 @@ def alpss_main(**inputs):
             else:
                 logger.info("HEL detection complete: no HEL found")
         except Exception as e:
+            errors.append(f"hel: {e}")
             logger.error("Error in HEL detection: %s", str(e))
             logger.error("Traceback: %s", traceback.format_exc())
             logger.info("Continuing without HEL results.")
@@ -240,6 +244,7 @@ def alpss_main(**inputs):
         hel_out=hel_out if hel_enabled else None,
         spall_ok=spall_ok,
         uncertainty_ok=uncertainty_ok,
+        error_msg="; ".join(errors) if errors else None,
         **inputs,
     )
 
