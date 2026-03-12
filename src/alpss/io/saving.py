@@ -106,6 +106,7 @@ def save(
         "Date": start_time.strftime("%b %d %Y"),
         "Time": start_time.strftime("%I:%M %p"),
         "File Name": os.path.basename(inputs["filepath"]),
+        "Velocity OK": True,
         "Run Time": (end_time - start_time),
         "Velocity at Max Compression": sa_out["v_max_comp"],
         "Time at Max Compression": sa_out["t_max_comp"],

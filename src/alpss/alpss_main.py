@@ -28,6 +28,7 @@ def setup_alpss_logger():
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
+        logger.propagate = False  # prevent duplicate output via root logger (e.g. in Jupyter)
 
     # Otherwise (if processor already set things up) → just use its config
     return logger
