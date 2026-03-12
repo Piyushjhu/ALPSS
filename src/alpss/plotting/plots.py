@@ -77,7 +77,7 @@ def plot_results(
     ax1.set_xlabel("Time (ns)")
     ax1.set_ylabel("Voltage (mV)")
     ax1.set_xlim([sdf_out["time"][0] / 1e-9, sdf_out["time"][-1] / 1e-9])
-    ax1.legend(loc="upper right")
+    ax1.legend(loc="upper right", fontsize=6)
     ax1.set_title("Voltage Data")
 
     #################### noise distribution histogram
@@ -346,7 +346,7 @@ def plot_results(
         )
 
     # if not np.isnan(sa_out['t_max_comp']) or not np.isnan(sa_out['t_max_ten']) or not np.isnan(sa_out['t_rc']):
-    ax12.legend(loc="lower right", fontsize=9, framealpha=1)
+    ax12.legend(loc="lower right", fontsize=6, framealpha=1)
     ax12.set_xlim(
         [
             -inputs["t_before"] / 1e-9,
