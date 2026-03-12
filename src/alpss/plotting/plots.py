@@ -318,6 +318,7 @@ def plot_results(
         linewidth=3,
         label="Smoothed Velocity",
     )
+
     ax12.set_xlabel("Time (ns)")
     ax12.set_ylabel("Velocity (m/s)")
     ax12.set_title("Velocity with Uncertainty Bounds")
@@ -345,8 +346,7 @@ def plot_results(
         )
 
     # if not np.isnan(sa_out['t_max_comp']) or not np.isnan(sa_out['t_max_ten']) or not np.isnan(sa_out['t_rc']):
-    #    ax12.legend(loc='lower right', fontsize=9)
-    ax12.legend(loc="upper left", fontsize=9)
+    ax12.legend(loc="lower right", fontsize=9, framealpha=1)
     ax12.set_xlim(
         [
             -inputs["t_before"] / 1e-9,
