@@ -25,12 +25,12 @@ def velocity_calculation(
     filt = (freq > freq_min) * (freq < freq_max)
     voltage_filt = ifft(fft(voltage_filt) * filt)
 
+    # unwrap the phase angle of the filtered voltage signal
+    phas = np.unwrap(np.angle(voltage_filt), axis=0)
+
     # get the indices in the time array closest to the domain start and end times
     time_start_idx = np.argmin(np.abs(time - t_doi_start))
     time_end_idx = np.argmin(np.abs(time - t_doi_end))
-
-    # unwrap the phase angle of the filtered voltage signal
-    phas = np.unwrap(np.angle(voltage_filt), axis=0)
 
     # take the numerical derivative using the certral difference method with a 9-point stencil
     # return the derivative on the domain of interest (dpdt) as well as the padded derivative to be used for smoothing
@@ -41,10 +41,6 @@ def velocity_calculation(
     # convert the derivative in to velocity
     velocity_pad = (lam / 2) * (dpdt_pad - cen)
     velocity_f = (lam / 2) * (dpdt - cen)
-
-    # crop the time array
-    time_f = time[time_start_idx:time_end_idx]
-
     # smooth the padded velocity signal using a moving average with gaussian weights
     velocity_f_smooth = smoothing(
         velocity_pad=velocity_pad,
@@ -54,6 +50,9 @@ def velocity_calculation(
         smoothing_sigma=inputs["smoothing_sigma"],
         smoothing_mu=inputs["smoothing_mu"],
     )
+
+    # crop the time array
+    time_f = time[time_start_idx:time_end_idx]
 
     # return a dictionary of the outputs
     vc_out = {
