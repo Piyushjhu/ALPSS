@@ -10,8 +10,19 @@ def num_derivative(phas, window, time_start_idx, time_end_idx, fs):
     half_space = int(np.floor(window / 2))
     pad = half_space + 4
 
-    # get only the section of interest
-    phas_pad = phas[time_start_idx - pad:time_end_idx + pad]
+    # Clamp slice indices to array bounds; fill any missing samples with edge
+    # values so the array length stays correct for downstream smoothing.
+    raw_start = time_start_idx - pad
+    raw_end = time_end_idx + pad
+    actual_start = max(0, raw_start)
+    actual_end = min(len(phas), raw_end)
+    left_missing = actual_start - raw_start    # > 0 only when clamped at start
+    right_missing = raw_end - actual_end       # > 0 only when clamped at end
+    phas_pad = np.pad(
+        phas[actual_start:actual_end],
+        (left_missing, right_missing),
+        mode="edge",
+    )
 
     # calculate the derivative with the 9-point central difference method
     dpdt_pad = np.zeros(phas_pad.shape)
