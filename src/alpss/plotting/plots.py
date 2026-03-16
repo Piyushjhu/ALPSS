@@ -346,7 +346,7 @@ def plot_results(
         )
 
     # if not np.isnan(sa_out['t_max_comp']) or not np.isnan(sa_out['t_max_ten']) or not np.isnan(sa_out['t_rc']):
-    ax12.legend(loc="lower right", fontsize=6, framealpha=1)
+    ax12.legend(loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0, fontsize=6, framealpha=1)
     ax12.set_xlim(
         [
             -inputs["t_before"] / 1e-9,
