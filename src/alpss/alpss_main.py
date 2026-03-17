@@ -272,6 +272,7 @@ def alpss_main(**inputs):
         start_time,
         end_time,
         fig,
+        iq_fig=sdf_out.get("iq_fig"),
         hel_fig=hel_fig,
         hel_out=hel_out if hel_enabled else None,
         spall_ok=spall_ok,

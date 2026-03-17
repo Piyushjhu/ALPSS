@@ -114,7 +114,7 @@ def spall_doi_finder(data, **inputs):
             # add in the user correction for the start time
             t_start_detected = t[cidx]
         elif inputs.get('start_time_user') == "iq":
-            t_start_detected_iq, amplitude, phase = iq_analysis(inputs, voltage, fs, time)
+            t_start_detected_iq, amplitude, phase, iq_fig = iq_analysis(inputs, voltage, fs, time)
 
             carr_idx = np.nan
             f_doi_carr_top_idx = np.nan
@@ -206,6 +206,7 @@ def spall_doi_finder(data, **inputs):
     if inputs.get('start_time_user') == "iq":
         sdf_out['amplitude'] = amplitude
         sdf_out['phase'] = phase
+        sdf_out['iq_fig'] = iq_fig
 
     return sdf_out
 
@@ -302,47 +303,21 @@ def iq_analysis(inputs, voltage, fs, time):
     ax1.legend(fontsize=12)
     ax1.tick_params(axis='both', labelsize=20)
 
-    # Save IQ amplitude plot as a separate figure (only if plots are enabled)
-    save_all_plots = inputs.get("save_all_plots", "yes")
-    save_in_subfolder = inputs.get("save_plots_in_subfolder", True)
-    save_iq_start_time_plot = inputs.get('save_iq_start_time_plot', True)
-    
-    if save_all_plots == "yes" and save_iq_start_time_plot:
-        if save_in_subfolder:
-            # Create subfolder for this file's plots
-            base_filename = os.path.basename(inputs["filepath"])
-            name_without_ext, _ = os.path.splitext(base_filename)
-            plots_subfolder = os.path.join(inputs["out_files_dir"], f"{name_without_ext}_plots")
-            os.makedirs(plots_subfolder, exist_ok=True)
-            plot_dir = plots_subfolder
-        else:
-            # Save plots in main output directory
-            plot_dir = inputs["out_files_dir"]
-        
-        # fname_prefix = os.path.splitext(inputs.get('filepath'))[0]
-        fig_iq, ax_iq = plt.subplots(figsize=(10, 6))
-        ax_iq.plot(time_us, amplitude_mV, label='Complex Amplitude', linewidth=1.5)
-        
-        # Create the actual step function used for detection
-        # Before start time: amplitude is above threshold (normal)
-        # After start time: amplitude drops below threshold (detected)
-        step_function = np.where(time_us < t_start_detected_iq * 1e6, initial_amplitude * 1e3, threshold * 1e3)
-        ax_iq.plot(time_us, step_function, 'r--', linewidth=2, label='Detection Step Function')
-        ax_iq.axhline(y=threshold * 1e3, color='orange', linestyle=':', alpha=0.7, linewidth=2, 
-                    label=f'Detection Threshold ({threshold*1e3:.1f} mV)')
-        ax_iq.axvline(x=t_start_detected_iq * 1e6, color='red', linestyle='-', linewidth=3, 
-                    label=f'Start Time Detected: {t_start_detected_iq*1e6:.1f} μs')
-        
-        ax_iq.set_ylabel('Amplitude (mV)', fontsize=16)
-        ax_iq.set_xlabel('Time (μs)', fontsize=16)
-        ax_iq.set_title('IQ Analysis: Start Time Detection', fontsize=18, fontweight='bold')
-        ax_iq.legend(fontsize=12, loc='upper right')
-        ax_iq.tick_params(axis='both', labelsize=14)
-        ax_iq.grid(True, alpha=0.3)
-        plt.tight_layout()
-        if inputs['save_data'] == "yes":
-            fig_iq.savefig(os.path.join(plot_dir, f"{name_without_ext}-IQ_start_time_detection.png"), dpi=inputs.get('plot_dpi', 300), format='png', facecolor='w')
-        plt.close(fig_iq)
+    fig_iq, ax_iq = plt.subplots(figsize=(10, 6))
+    ax_iq.plot(time_us, amplitude_mV, label='Complex Amplitude', linewidth=1.5)
+    step_function = np.where(time_us < t_start_detected_iq * 1e6, initial_amplitude * 1e3, threshold * 1e3)
+    ax_iq.plot(time_us, step_function, 'r--', linewidth=2, label='Detection Step Function')
+    ax_iq.axhline(y=threshold * 1e3, color='orange', linestyle=':', alpha=0.7, linewidth=2,
+                label=f'Detection Threshold ({threshold*1e3:.1f} mV)')
+    ax_iq.axvline(x=t_start_detected_iq * 1e6, color='red', linestyle='-', linewidth=3,
+                label=f'Start Time Detected: {t_start_detected_iq*1e6:.1f} μs')
+    ax_iq.set_ylabel('Amplitude (mV)', fontsize=16)
+    ax_iq.set_xlabel('Time (μs)', fontsize=16)
+    ax_iq.set_title('IQ Analysis: Start Time Detection', fontsize=18, fontweight='bold')
+    ax_iq.legend(fontsize=12, loc='upper right')
+    ax_iq.tick_params(axis='both', labelsize=14)
+    ax_iq.grid(True, alpha=0.3)
+    plt.tight_layout()
 
     # Adjust phase plotting similarly
     ax2.plot(time_us, phase, label='Phase', color='green')
@@ -352,4 +327,4 @@ def iq_analysis(inputs, voltage, fs, time):
     ax2.tick_params(axis='both', labelsize=20)
     plt.tight_layout()
 
-    return t_start_detected_iq, amplitude, phase
+    return t_start_detected_iq, amplitude, phase, fig_iq

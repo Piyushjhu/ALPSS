@@ -18,6 +18,7 @@ def save(
     start_time,
     end_time,
     fig,
+    iq_fig=None,
     hel_fig=None,
     hel_out=None,
     spall_ok=True,
@@ -169,6 +170,13 @@ def save(
         results_df.T.to_csv(results_path, header=False)
         results_assets.append(results_path)
 
+    # save the IQ diagnostic figure
+    iq_fig_assets = [iq_fig]
+    if iq_fig is not None and inputs["save_data"]:
+        iq_fig_path = f"{fname}-iq.png"
+        iq_fig.savefig(iq_fig_path, dpi=inputs.get("plot_dpi", 300), facecolor="w")
+        iq_fig_assets.append(iq_fig_path)
+
     # save the HEL diagnostic figure
     hel_fig_assets = [hel_fig]
     if hel_fig is not None and inputs["save_data"]:
@@ -186,5 +194,6 @@ def save(
         "noise": noise_assets,
         "vel_uncert": vel_uncert_assets,
         "results": results_assets,
+        "iq_figure": iq_fig_assets,
         "hel_figure": hel_fig_assets,
     }
