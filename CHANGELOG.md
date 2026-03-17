@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-17
+
+### Added
+- `velocity_ok`, `spall_ok`, and `uncertainty_ok` flags in output, with per-category error messages
+
+### Fixed
+- Clamp `time_start_idx - pad` to valid range and use `np.pad(..., mode="edge")` to prevent empty arrays when signal starts near the beginning of data
+- Removed internal try/except from `spall_analysis` so real exceptions surface to `alpss_main`
+- Uncertainty analysis is now skipped when spall fails, preventing misleading `uncertainty_ok=True` with NaN values
+- Hard HEL failures (insufficient data) raise; soft failures (no plateau) return `HELResult(ok=False, error_message=...)`
+- HEL diagnostic figure is now saved via `save()` and returned in the assets dict
+
+### Changed
+- Reduced legend font size for "Voltage Data" and "Velocity with Uncertainty Bounds" plots
+- Improved informational logging throughout the pipeline
+
 ## [1.5.0] - 2026-02-11
 
 ### Added
@@ -61,7 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automated spall signal analysis pipeline
 - Initial PyPI and Docker publishing workflows
 
-[Unreleased]: https://github.com/openmsi/ALPSS/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/openmsi/ALPSS/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/openmsi/ALPSS/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/openmsi/ALPSS/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/openmsi/ALPSS/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/openmsi/ALPSS/compare/v1.2.4...v1.3.2

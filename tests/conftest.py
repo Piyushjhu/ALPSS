@@ -1,6 +1,7 @@
 import pytest
 import os
 
+
 @pytest.fixture
 def config_file_path():
     """Fixture to provide the path to the test config file."""
@@ -78,6 +79,7 @@ def valid_inputs():
         "C_L": 4540,
         "material": "test_material",
     }
+
 
 @pytest.fixture
 def expected_values():

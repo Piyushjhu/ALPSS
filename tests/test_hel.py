@@ -86,17 +86,17 @@ class TestHELDetection:
         assert result.ok is False
 
     def test_returns_not_ok_for_empty_data(self):
-        result = hel_detection(
-            np.array([]), np.array([]), np.array([]),
-        )
-        assert result.ok is False
+        with pytest.raises(ValueError, match="insufficient valid data points for HEL"):
+            hel_detection(
+                np.array([]), np.array([]), np.array([]),
+            )
 
     def test_returns_not_ok_for_all_nan(self):
         t = np.linspace(0, 10, 100)
         v = np.full_like(t, np.nan)
         u = np.ones_like(t)
-        result = hel_detection(t, v, u)
-        assert result.ok is False
+        with pytest.raises(ValueError, match="insufficient valid data points for HEL"):
+            hel_detection(t, v, u)
 
     def test_hel_stress_calculation(self, synthetic_hel_signal):
         """Verify HEL stress = 0.5 * density * acoustic_velocity * fsv / 1e9."""

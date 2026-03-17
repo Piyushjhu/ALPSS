@@ -20,6 +20,7 @@ class HELResult:
     consecutive_points: int = 0
     segment_duration_ns: float = np.nan
     strain_rate: float = np.nan
+    error_message: str | None = None
     # Internal data for plotting
     segment_start_idx: int | None = None
     segment_end_idx: int | None = None
@@ -117,8 +118,7 @@ def hel_detection(
     # Step 1: Filter out NaN and high-uncertainty points
     valid_mask = ~np.isnan(velocity)
     if np.sum(valid_mask) <= 5:
-        logger.warning("HEL: insufficient valid data points")
-        return HELResult(ok=False)
+        raise ValueError("insufficient valid data points for HEL")
 
     time_clean = time_ns[valid_mask]
     vel_clean = velocity[valid_mask]
@@ -147,8 +147,7 @@ def hel_detection(
     u_win = unc_clean[search_mask]
 
     if len(t_win) < 10:
-        logger.warning("HEL: insufficient data points in search window")
-        return HELResult(ok=False)
+        raise ValueError("insufficient data points in HEL search window")
 
     # Step 3: Compute smoothed gradient and convert to angles
     gradient = np.gradient(v_win, t_win)
@@ -185,9 +184,11 @@ def hel_detection(
 
     # Step 5: Extract HEL properties from earliest plateau
     if seg_start is None or seg_end is None:
-        logger.info("HEL: no qualifying plateau found")
+        msg = "no qualifying HEL plateau found"
+        logger.info(msg)
         return HELResult(
             ok=False,
+            error_message=msg,
             time_window=t_win,
             velocity_window=v_win,
             gradient_smooth=gradient_smooth,
@@ -206,13 +207,11 @@ def hel_detection(
 
     # Step 6: Validate minimum velocity
     if abs(fsv) < min_velocity:
-        logger.info(
-            "HEL rejected: detected velocity %.2f m/s below threshold %.1f m/s",
-            abs(fsv),
-            min_velocity,
-        )
+        msg = f"rejected - HEL detected velocity < threshold {min_velocity:.1f} m/s"
+        logger.info(msg)
         return HELResult(
             ok=False,
+            error_message=msg,
             free_surface_velocity=fsv,
             time_detection_ns=hel_time,
             consecutive_points=n_points,

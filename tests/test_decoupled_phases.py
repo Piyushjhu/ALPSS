@@ -40,11 +40,10 @@ def test_analysis_failure_returns_nan_defaults(valid_inputs):
     assert np.isnan(result_dict["Strain Rate Uncertainty"])
 
 
-def test_velocity_failure_returns_none(valid_inputs):
-    """Test that velocity processing failure returns None."""
+def test_velocity_failure_raises(valid_inputs):
+    """Test that velocity processing failure raises."""
     inputs = copy.deepcopy(valid_inputs)
 
-    with patch("alpss.alpss_main.extract_data", side_effect=RuntimeError("simulated data failure")):
-        results = alpss_main(**inputs)
-
-    assert results is None, "alpss_main should return None when velocity processing fails"
+    with pytest.raises(RuntimeError, match="simulated data failure"):
+        with patch("alpss.alpss_main.extract_data", side_effect=RuntimeError("simulated data failure")):
+            alpss_main(**inputs)

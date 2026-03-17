@@ -24,9 +24,8 @@ def plot_results(
 ):
 
     # create the figure and axes
-    fig = plt.figure(
-        num=1, figsize=inputs["plot_figsize"], dpi=inputs["plot_dpi"], clear=True
-    )
+    plt.close("all")
+    fig = plt.figure(figsize=inputs["plot_figsize"], dpi=inputs["plot_dpi"])
     ax1 = plt.subplot2grid((3, 5), (0, 0))  # voltage data
     ax2 = plt.subplot2grid((3, 5), (0, 1))  # noise distribution histogram
     ax3 = plt.subplot2grid((3, 5), (1, 0))  # imported voltage spectrogram
@@ -78,7 +77,7 @@ def plot_results(
     ax1.set_xlabel("Time (ns)")
     ax1.set_ylabel("Voltage (mV)")
     ax1.set_xlim([sdf_out["time"][0] / 1e-9, sdf_out["time"][-1] / 1e-9])
-    ax1.legend(loc="upper right")
+    ax1.legend(loc="upper right", fontsize=6)
     ax1.set_title("Voltage Data")
 
     #################### noise distribution histogram
@@ -249,7 +248,7 @@ def plot_results(
     )
     ax8.set_xlabel("Time (ns)")
     ax8.set_ylabel("Velocity (m/s)")
-    ax8.legend(loc="lower right", fontsize=9, framealpha=1)
+    ax8.legend(loc="upper left", fontsize=9, framealpha=1)
     ax8.set_zorder(1)
     ax8.patch.set_visible(False)
     ax8.set_title("Filtered Spectrogram ROI with Velocity")
@@ -319,6 +318,7 @@ def plot_results(
         linewidth=3,
         label="Smoothed Velocity",
     )
+
     ax12.set_xlabel("Time (ns)")
     ax12.set_ylabel("Velocity (m/s)")
     ax12.set_title("Velocity with Uncertainty Bounds")
@@ -346,8 +346,7 @@ def plot_results(
         )
 
     # if not np.isnan(sa_out['t_max_comp']) or not np.isnan(sa_out['t_max_ten']) or not np.isnan(sa_out['t_rc']):
-    #    ax12.legend(loc='lower right', fontsize=9)
-    ax12.legend(loc="lower right", fontsize=9)
+    ax12.legend(loc="upper left", bbox_to_anchor=(1.01, 1), borderaxespad=0, fontsize=6, framealpha=1)
     ax12.set_xlim(
         [
             -inputs["t_before"] / 1e-9,
@@ -398,8 +397,9 @@ def plot_results(
         cellText=df1.values, colLabels=df1.columns, cellLoc=cellLoc1, loc=loc1
     )
     table1.auto_set_font_size(False)
-    table1.set_fontsize(10)
-    table1.scale(1, 1.5)
+    table1.set_fontsize(8)
+    table1.auto_set_column_width([0, 1])
+    table1.scale(1, 1.2)
     ax13.axis("tight")
     ax13.axis("off")
 

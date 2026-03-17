@@ -17,6 +17,7 @@ import traceback
 import logging
 import numpy as np
 
+
 def setup_alpss_logger():
     logger = logging.getLogger("alpss")
 
@@ -24,13 +25,19 @@ def setup_alpss_logger():
         # Standalone mode → set up a default
         handler = logging.StreamHandler()
         handler.setLevel(logging.INFO)
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+        )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
+        logger.propagate = (
+            False  # prevent duplicate output via root logger (e.g. in Jupyter)
+        )
 
     # Otherwise (if processor already set things up) → just use its config
     return logger
+
 
 logger = setup_alpss_logger()
 
@@ -38,11 +45,18 @@ logger = setup_alpss_logger()
 def _default_spall_output():
     """Return NaN-filled spall analysis output for graceful degradation."""
     return {
-        "t_max_comp": np.nan, "t_max_ten": np.nan, "t_rc": np.nan,
-        "v_max_comp": np.nan, "v_max_ten": np.nan, "v_rc": np.nan,
-        "spall_strength_est": np.nan, "strain_rate_est": np.nan,
-        "peak_velocity_freq_uncert": np.nan, "peak_velocity_vel_uncert": np.nan,
-        "max_ten_freq_uncert": np.nan, "max_ten_vel_uncert": np.nan,
+        "t_max_comp": np.nan,
+        "t_max_ten": np.nan,
+        "t_rc": np.nan,
+        "v_max_comp": np.nan,
+        "v_max_ten": np.nan,
+        "v_rc": np.nan,
+        "spall_strength_est": np.nan,
+        "strain_rate_est": np.nan,
+        "peak_velocity_freq_uncert": np.nan,
+        "peak_velocity_vel_uncert": np.nan,
+        "max_ten_freq_uncert": np.nan,
+        "max_ten_vel_uncert": np.nan,
     }
 
 
@@ -54,6 +68,7 @@ def _default_uncertainty_output():
 def _default_hel_output():
     """Return a failed HEL result for graceful degradation."""
     from alpss.analysis.hel import HELResult
+
     return HELResult(ok=False)
 
 
@@ -64,63 +79,111 @@ def alpss_main(**inputs):
 
     # --- Phase 1: Velocity Processing ---
     try:
-        # begin the program timer
         start_time = datetime.now()
         data = extract_data(inputs)
+        logger.info(
+            "Signal: %s | %d samples | %.2f GS/s | window %.1f–%.1f µs (%.1f µs duration)",
+            os.path.basename(inputs.get("filepath", "")),
+            len(data),
+            inputs.get("sample_rate", 0) / 1e9,
+            inputs.get("time_to_skip", 0) / 1e-6,
+            (inputs.get("time_to_skip", 0) + inputs.get("time_to_take", 0)) / 1e-6,
+            inputs.get("time_to_take", 0) / 1e-6,
+        )
 
         # function to find the spall signal domain of interest
+        logger.info("Finding spall domain of interest...")
         sdf_out = spall_doi_finder(data, **inputs)
+        logger.info(
+            "Spall DOI found: start=%.3e s, end=%.3e s",
+            sdf_out["t_doi_start"],
+            sdf_out["t_doi_end"],
+        )
 
         # function to find the carrier frequency
+        logger.info("Estimating carrier frequency...")
         cen = carrier_frequency(sdf_out, **inputs)
+        logger.info("Carrier frequency: %.6e Hz", cen)
 
         # function to filter out the carrier frequency after the signal has started
+        logger.info("Filtering carrier frequency...")
         cf_out = carrier_filter(sdf_out, cen, **inputs)
+        logger.info("Carrier filter applied")
 
         # function to calculate the velocity from the filtered voltage signal
+        logger.info("Calculating velocity...")
         vc_out = velocity_calculation(sdf_out, cen, cf_out, **inputs)
+        logger.info("Velocity calculated (%d points)", len(vc_out["time_f"]))
 
         # function to estimate the instantaneous uncertainty for all points in time
+        logger.info("Computing instantaneous uncertainty...")
         iua_out = instantaneous_uncertainty_analysis(sdf_out, vc_out, cen, **inputs)
+        logger.info("Uncertainty computed")
 
         # end the velocity processing timer
         end_time = datetime.now()
+        logger.info("Velocity processing complete in %s", end_time - start_time)
 
     except Exception as e:
         logger.error("Error in velocity processing: %s", str(e))
         logger.error("Traceback: %s", traceback.format_exc())
+        # Try to save a fallback voltage plot for diagnostics
         try:
             logger.info("Attempting a fallback visualization of the voltage signal...")
-            fig, items = plot_voltage(data, **inputs)
-            logger.info("Fallback visualization was successful.")
-            return (fig, items)
-        except Exception as e2:
-            logger.error("Fallback visualization also failed: %s", str(e2))
-        return None
+            plot_voltage(data, **inputs)
+            logger.info("Fallback voltage plot saved.")
+        except Exception:
+            logger.error("Fallback visualization also failed.")
+        # Re-raise so the caller can track this as a failure
+        raise
 
     # --- Phase 2a: Spall analysis ---
+    errors = []
     sa_out = _default_spall_output()
+    spall_ok = False
     try:
+        logger.info("Running spall analysis...")
         sa_out = spall_analysis(vc_out, iua_out, **inputs)
+        spall_ok = True
+        logger.info(
+            "Spall analysis complete: spall strength=%.4f, strain rate=%.4e",
+            sa_out["spall_strength_est"],
+            sa_out["strain_rate_est"],
+        )
     except Exception as e:
+        errors.append(f"spall: {e}")
         logger.error("Error in spall analysis: %s", str(e))
         logger.error("Traceback: %s", traceback.format_exc())
         logger.info("Continuing without spall analysis.")
 
     # --- Phase 2b: Full uncertainty analysis ---
     fua_out = _default_uncertainty_output()
-    try:
-        fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
-    except Exception as e:
-        logger.error("Error in uncertainty analysis: %s", str(e))
-        logger.error("Traceback: %s", traceback.format_exc())
-        logger.info("Continuing without uncertainty analysis.")
+    uncertainty_ok = False
+    if not spall_ok:
+        logger.info("Skipping uncertainty analysis: spall analysis did not succeed.")
+        errors.append(f"uncertainty: analysis skipped due to spall_ok=false")
+    else:
+        try:
+            logger.info("Running full uncertainty analysis...")
+            fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
+            uncertainty_ok = True
+            logger.info(
+                "Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e",
+                fua_out["spall_uncert"],
+                fua_out["strain_rate_uncert"],
+            )
+        except Exception as e:
+            errors.append(f"uncertainty: {e}")
+            logger.error("Error in uncertainty analysis: %s", str(e))
+            logger.error("Traceback: %s", traceback.format_exc())
+            logger.info("Continuing without uncertainty analysis.")
 
     # --- Phase 2c: HEL detection (optional) ---
     hel_out = _default_hel_output()
     hel_enabled = inputs.get("hel_detection_enabled", False)
     if hel_enabled:
         try:
+            logger.info("Running HEL detection...")
             # Convert velocity time from seconds to nanoseconds for HEL
             time_ns = vc_out["time_f"] / 1e-9
             hel_out = hel_detection(
@@ -136,7 +199,19 @@ def alpss_main(**inputs):
                 acoustic_velocity=inputs.get("C0", None),
                 C_L=inputs.get("C_L", None),
             )
+            if hel_out.ok:
+                logger.info(
+                    "HEL detected: strength=%.4f GPa, FSV=%.2f m/s, time=%.2f ns",
+                    hel_out.strength_gpa,
+                    hel_out.free_surface_velocity,
+                    hel_out.time_detection_ns,
+                )
+            else:
+                if hel_out.error_message:
+                    errors.append(f"hel: {hel_out.error_message}")
+                logger.info("HEL detection complete: no HEL found")
         except Exception as e:
+            errors.append(f"hel: {e}")
             logger.error("Error in HEL detection: %s", str(e))
             logger.error("Traceback: %s", traceback.format_exc())
             logger.info("Continuing without HEL results.")
@@ -145,6 +220,7 @@ def alpss_main(**inputs):
     end_time_final = datetime.now()
 
     # function to generate the final figure
+    logger.info("Generating plots...")
     fig = plot_results(
         sdf_out,
         cen,
@@ -173,22 +249,19 @@ def alpss_main(**inputs):
                 sample_name=os.path.basename(inputs.get("filepath", "")),
                 sample_material=inputs.get("material", ""),
             )
-            if inputs.get("save_data"):
-                filename = os.path.splitext(os.path.basename(inputs["filepath"]))[0]
-                hel_path = os.path.join(inputs["out_files_dir"], f"{filename}-hel.png")
-                hel_fig.savefig(hel_path, dpi=inputs.get("plot_dpi", 300), facecolor="w")
-                logger.info("HEL diagnostic plot saved to %s", hel_path)
             if inputs.get("display_plots") != "yes":
                 import matplotlib.pyplot as _plt
+
                 _plt.close(hel_fig)
         except Exception as e:
             logger.error("Error generating HEL plot: %s", str(e))
 
-    logger.info(
-        f"\nFull runtime: {end_time_final - start_time}\n"
-    )
+    logger.info(f"\nFull runtime: {end_time_final - start_time}\n")
+
+    logger.info("Plots generated")
 
     # function to save the output files if desired
+    logger.info("Saving outputs...")
     items = save(
         sdf_out,
         cen,
@@ -199,8 +272,15 @@ def alpss_main(**inputs):
         start_time,
         end_time,
         fig,
+        iq_fig=sdf_out.get("iq_fig"),
+        hel_fig=hel_fig,
         hel_out=hel_out if hel_enabled else None,
+        spall_ok=spall_ok,
+        uncertainty_ok=uncertainty_ok,
+        error_msg="; ".join(errors) if errors else "",
         **inputs,
     )
+
+    logger.info("Outputs saved")
 
     return (fig, items)

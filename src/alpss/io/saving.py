@@ -18,7 +18,12 @@ def save(
     start_time,
     end_time,
     fig,
+    iq_fig=None,
+    hel_fig=None,
     hel_out=None,
+    spall_ok=True,
+    uncertainty_ok=True,
+    error_msg=None,
     **inputs,
 ):
     filename = os.path.splitext(os.path.basename(inputs["filepath"]))[0]
@@ -106,6 +111,10 @@ def save(
         "Date": start_time.strftime("%b %d %Y"),
         "Time": start_time.strftime("%I:%M %p"),
         "File Name": os.path.basename(inputs["filepath"]),
+        "Velocity OK": True,
+        "Spall OK": spall_ok,
+        "Uncertainty OK": uncertainty_ok,
+        "Error Message": error_msg,
         "Run Time": (end_time - start_time),
         "Velocity at Max Compression": sa_out["v_max_comp"],
         "Time at Max Compression": sa_out["t_max_comp"],
@@ -161,6 +170,20 @@ def save(
         results_df.T.to_csv(results_path, header=False)
         results_assets.append(results_path)
 
+    # save the IQ diagnostic figure
+    iq_fig_assets = [iq_fig]
+    if iq_fig is not None and inputs["save_data"]:
+        iq_fig_path = f"{fname}-iq.png"
+        iq_fig.savefig(iq_fig_path, dpi=inputs.get("plot_dpi", 300), facecolor="w")
+        iq_fig_assets.append(iq_fig_path)
+
+    # save the HEL diagnostic figure
+    hel_fig_assets = [hel_fig]
+    if hel_fig is not None and inputs["save_data"]:
+        hel_fig_path = f"{fname}-hel.png"
+        hel_fig.savefig(hel_fig_path, dpi=inputs.get("plot_dpi", 300), facecolor="w")
+        hel_fig_assets.append(hel_fig_path)
+
     display(results_dict)
     return {
         "figure": fig_assets,
@@ -171,4 +194,6 @@ def save(
         "noise": noise_assets,
         "vel_uncert": vel_uncert_assets,
         "results": results_assets,
+        "iq_figure": iq_fig_assets,
+        "hel_figure": hel_fig_assets,
     }
