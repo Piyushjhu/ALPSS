@@ -33,11 +33,10 @@ def spall_analysis(vc_out, iua_out, **inputs):
         rel_min_idx = signal.argrelmin(velocity_f_smooth, order=pb_neighbors)[0]
         extrema_min = np.append(rel_min_idx, np.argmax(velocity_f_smooth))
         extrema_min.sort()
-        max_ten_idx = extrema_min[
-            np.where(extrema_min == np.argmax(velocity_f_smooth))[0][0]
-            + 1
-            + pb_idx_correction
-        ]
+        _max_ten_pos = np.where(extrema_min == np.argmax(velocity_f_smooth))[0][0] + 1 + pb_idx_correction
+        if _max_ten_pos >= len(extrema_min):
+            raise ValueError("no local minimum found after peak velocity (no spall pullback detected)")
+        max_ten_idx = extrema_min[_max_ten_pos]
 
         # get the uncertainities associated with the max tension velocity
         max_ten_freq_uncert = freq_uncert[max_ten_idx]
@@ -67,11 +66,10 @@ def spall_analysis(vc_out, iua_out, **inputs):
         rel_max_idx = signal.argrelmax(velocity_f_smooth, order=rc_neighbors)[0]
         extrema_max = np.append(rel_max_idx, np.argmax(velocity_f_smooth))
         extrema_max.sort()
-        rc_idx = extrema_max[
-            np.where(extrema_max == np.argmax(velocity_f_smooth))[0][0]
-            + 2
-            + rc_idx_correction
-        ]
+        _rc_pos = np.where(extrema_max == np.argmax(velocity_f_smooth))[0][0] + 2 + rc_idx_correction
+        if _rc_pos >= len(extrema_max):
+            raise ValueError("no local maximum found after pullback (no recompression detected)")
+        rc_idx = extrema_max[_rc_pos]
         t_rc = time_f[rc_idx]
         v_rc = velocity_f_smooth[rc_idx]
 
