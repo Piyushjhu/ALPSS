@@ -6,10 +6,11 @@ from alpss.carrier.frequency import carrier_frequency
 from alpss.carrier.filter import carrier_filter
 from alpss.velocity.calculation import velocity_calculation
 from alpss.validation import validate_inputs
-from alpss.analysis.spall import spall_analysis
+from alpss.analysis.spall import spall_analysis, spall_analysis_with_dns, SpallResult
 from alpss.analysis.full_uncertainty import full_uncertainty_analysis
 from alpss.analysis.instantaneous_uncertainty import instantaneous_uncertainty_analysis
 from alpss.analysis.hel import hel_detection
+from alpss.analysis.shock_stress import calculate_shock_stress
 from alpss.utils import extract_data
 from alpss.io.saving import save
 from datetime import datetime
@@ -70,6 +71,11 @@ def _default_hel_output():
     from alpss.analysis.hel import HELResult
 
     return HELResult(ok=False)
+
+
+def _default_spall_result():
+    """Return a failed SpallResult for graceful degradation."""
+    return SpallResult(ok=False, dns_classification="analysis not run")
 
 
 # main function to link together all the sub-functions
@@ -140,16 +146,40 @@ def alpss_main(**inputs):
     # --- Phase 2a: Spall analysis ---
     errors = []
     sa_out = _default_spall_output()
+    spall_result = _default_spall_result()   # extended result with DNS
     spall_ok = False
+
+    # Determine which spall path to use
+    spall_detection_method = inputs.get("spall_detection_method", "max_min")
+    use_dns = inputs.get("spall_calculation", "yes") == "yes"
+
     try:
-        logger.info("Running spall analysis...")
+        logger.info("Running spall analysis (method=%s)...", spall_detection_method)
+        # Always run the original analysis for backward-compatible sa_out
         sa_out = spall_analysis(vc_out, iua_out, **inputs)
         spall_ok = True
         logger.info(
-            "Spall analysis complete: spall strength=%.4f, strain rate=%.4e",
+            "Spall analysis complete: spall strength=%.4f Pa, strain rate=%.4e s^-1",
             sa_out["spall_strength_est"],
             sa_out["strain_rate_est"],
         )
+        # Extended analysis with DNS qualifier
+        if use_dns:
+            spall_result = spall_analysis_with_dns(
+                vc_out, iua_out,
+                spall_detection_method=spall_detection_method,
+                rdp_epsilon=inputs.get("spall_rdp_epsilon", 5.0),
+                min_pullback_velocity=inputs.get("min_pullback_velocity", 10.0),
+                min_recomp_ratio=inputs.get("min_recomp_ratio", 0.03),
+                min_recomp_velocity_ratio=inputs.get("min_recomp_velocity_ratio", 1.10),
+                min_recomp_time_ns=inputs.get("min_recomp_time_ns", 2.5),
+                **inputs,
+            )
+            logger.info(
+                "DNS classification: %s (ok=%s)",
+                spall_result.dns_classification,
+                spall_result.ok,
+            )
     except Exception as e:
         errors.append(f"spall: {e}")
         logger.error("Error in spall analysis: %s", str(e))
@@ -161,14 +191,14 @@ def alpss_main(**inputs):
     uncertainty_ok = False
     if not spall_ok:
         logger.info("Skipping uncertainty analysis: spall analysis did not succeed.")
-        errors.append(f"uncertainty: analysis skipped due to spall_ok=false")
+        errors.append("uncertainty: analysis skipped due to spall_ok=false")
     else:
         try:
             logger.info("Running full uncertainty analysis...")
             fua_out = full_uncertainty_analysis(cen, sa_out, iua_out, **inputs)
             uncertainty_ok = True
             logger.info(
-                "Uncertainty analysis complete: spall uncertainty=%.4f, strain rate uncertainty=%.4e",
+                "Uncertainty analysis complete: spall uncertainty=%.4f Pa, strain rate uncertainty=%.4e",
                 fua_out["spall_uncert"],
                 fua_out["strain_rate_uncert"],
             )
@@ -178,7 +208,32 @@ def alpss_main(**inputs):
             logger.error("Traceback: %s", traceback.format_exc())
             logger.info("Continuing without uncertainty analysis.")
 
-    # --- Phase 2c: HEL detection (optional) ---
+    # --- Phase 2c: Shock stress (Hugoniot EOS) ---
+    shock_result = {
+        "shock_stress_pa": np.nan, "shock_stress_gpa": np.nan,
+        "shock_stress_unc_pa": np.nan, "shock_stress_unc_gpa": np.nan,
+        "method": "none", "S": np.nan,
+    }
+    peak_velocity = sa_out.get("v_max_comp", np.nan)
+    if not np.isnan(peak_velocity):
+        peak_vel_unc = sa_out.get("peak_velocity_vel_uncert", 0.0) or 0.0
+        shock_result = calculate_shock_stress(
+            density=inputs.get("density", np.nan),
+            C0=inputs.get("C0", np.nan),
+            peak_velocity=peak_velocity,
+            peak_velocity_unc=float(peak_vel_unc),
+            material=inputs.get("material", ""),
+            S=inputs.get("hugoniot_S", None),
+            method=inputs.get("shock_stress_method", "hugoniot"),
+        )
+        logger.info(
+            "Shock stress: %.4f GPa (method=%s, S=%.2f)",
+            shock_result["shock_stress_gpa"],
+            shock_result["method"],
+            shock_result["S"] if not np.isnan(shock_result["S"]) else 0,
+        )
+
+    # --- Phase 2d: HEL detection (optional) ---
     hel_out = _default_hel_output()
     hel_enabled = inputs.get("hel_detection_enabled", False)
     if hel_enabled:
@@ -186,6 +241,7 @@ def alpss_main(**inputs):
             logger.info("Running HEL detection...")
             # Convert velocity time from seconds to nanoseconds for HEL
             time_ns = vc_out["time_f"] / 1e-9
+            hel_method = inputs.get("hel_method", "gradient")
             hel_out = hel_detection(
                 time_ns,
                 vc_out["velocity_f_smooth"],
@@ -198,13 +254,18 @@ def alpss_main(**inputs):
                 density=inputs.get("density", None),
                 acoustic_velocity=inputs.get("C0", None),
                 C_L=inputs.get("C_L", None),
+                method=hel_method,
+                hel_rdp_epsilon=inputs.get("hel_rdp_epsilon", 1.25),
+                hel_slope_drop_ratio=inputs.get("hel_slope_drop_ratio", 0.9),
+                hel_min_plateau_duration=inputs.get("hel_min_plateau_duration", 0.5),
             )
             if hel_out.ok:
                 logger.info(
-                    "HEL detected: strength=%.4f GPa, FSV=%.2f m/s, time=%.2f ns",
+                    "HEL detected: strength=%.4f GPa, FSV=%.2f m/s, time=%.2f ns (method=%s)",
                     hel_out.strength_gpa,
                     hel_out.free_surface_velocity,
                     hel_out.time_detection_ns,
+                    hel_out.method,
                 )
             else:
                 if hel_out.error_message:
@@ -278,6 +339,8 @@ def alpss_main(**inputs):
         spall_ok=spall_ok,
         uncertainty_ok=uncertainty_ok,
         error_msg="; ".join(errors) if errors else "",
+        spall_result=spall_result,
+        shock_result=shock_result,
         **inputs,
     )
 

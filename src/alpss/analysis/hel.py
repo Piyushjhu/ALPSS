@@ -1,8 +1,27 @@
+"""HEL (Hugoniot Elastic Limit) detection for PDV velocity traces.
+
+Two detection methods are available:
+
+* **Gradient / angle-based** (original, :func:`hel_detection`):
+    Smoothed gradient converted to angles; first consecutive low-slope
+    segment is taken as the HEL plateau.  Selected by ``method="gradient"``.
+
+* **RDP + Linear Hybrid** (new, matches HELIX Toolbox v2):
+    Ramer–Douglas–Peucker simplification to find candidate "knee" points,
+    followed by linear regression on the *raw* data for the rise segment
+    and the plateau segment.  Physics gating (slope-drop ratio, minimum
+    plateau duration, minimum velocity) filters false positives.
+    Selected by ``method="rdp_linear"`` or as the default when
+    ``hel_slope_drop_ratio`` is provided.
+    Documented in ``HEL_DETECTION_ALGORITHM.md`` of HELIX Toolbox.
+"""
+
 from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import uniform_filter1d
-from dataclasses import dataclass
+from scipy.stats import linregress
+from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger("alpss")
@@ -21,13 +40,19 @@ class HELResult:
     segment_duration_ns: float = np.nan
     strain_rate: float = np.nan
     error_message: str | None = None
-    # Internal data for plotting
+    # Internal data for plotting (gradient method)
     segment_start_idx: int | None = None
     segment_end_idx: int | None = None
     time_window: np.ndarray | None = None
     velocity_window: np.ndarray | None = None
     gradient_smooth: np.ndarray | None = None
     angles_deg: np.ndarray | None = None
+    # Extra fields populated by the RDP + Linear Hybrid method
+    method: str = "gradient"
+    rise_slope: float = np.nan       # [m/s per ns] slope of the rise segment
+    plateau_slope: float = np.nan    # [m/s per ns] slope of the plateau segment
+    rdp_knee_time_ns: float = np.nan # time of the RDP knee point [ns]
+    rdp_points: np.ndarray | None = None  # simplified vertices for visualisation
 
 
 def elastic_shock_strain_rate(C_L, U_hel, U_0, t_hel, t_0):
@@ -71,9 +96,24 @@ def hel_detection(
     density=None,
     acoustic_velocity=None,
     C_L=None,
+    # RDP + Linear Hybrid parameters (ignored when method="gradient")
+    method: str = "gradient",
+    hel_rdp_epsilon: float = 1.25,
+    hel_slope_drop_ratio: float = 0.9,
+    hel_min_plateau_duration: float = 0.5,
 ):
     """
     Detect the Hugoniot Elastic Limit (HEL) from a velocity trace.
+
+    Parameters
+    ----------
+    method : str
+        ``"gradient"`` (default, original) or ``"rdp_linear"`` (RDP + Linear
+        Hybrid from HELIX Toolbox v2).  When ``"rdp_linear"`` is requested
+        the gradient-based fall-back is attempted automatically if the hybrid
+        method fails.
+
+    .. rubric:: Gradient method parameters
 
     Uses a gradient-based method to find the earliest low-slope plateau
     in the velocity signal within a specified time window.
@@ -111,6 +151,22 @@ def hel_detection(
     HELResult
         Dataclass with detection results and internal data for plotting.
     """
+    # Delegate to RDP + Linear Hybrid when requested
+    if method == "rdp_linear":
+        return hel_detection_rdp_hybrid(
+            time_ns, velocity, uncertainty,
+            hel_start_ns=hel_start_ns,
+            hel_end_ns=hel_end_ns,
+            min_velocity=min_velocity,
+            density=density,
+            acoustic_velocity=acoustic_velocity,
+            C_L=C_L,
+            rdp_epsilon=hel_rdp_epsilon,
+            slope_drop_ratio=hel_slope_drop_ratio,
+            min_plateau_duration_ns=hel_min_plateau_duration,
+            min_points=min_points,
+        )
+
     time_ns = np.asarray(time_ns, dtype=float)
     velocity = np.asarray(velocity, dtype=float)
     uncertainty = np.asarray(uncertainty, dtype=float)
@@ -256,6 +312,7 @@ def hel_detection(
 
     return HELResult(
         ok=True,
+        method="gradient",
         strength_gpa=strength_gpa,
         uncertainty_gpa=uncertainty_gpa,
         free_surface_velocity=fsv,
@@ -270,3 +327,264 @@ def hel_detection(
         gradient_smooth=gradient_smooth,
         angles_deg=angles_deg,
     )
+
+
+# ---------------------------------------------------------------------------
+# RDP + Linear Hybrid HEL detection (HELIX Toolbox v2 algorithm)
+# ---------------------------------------------------------------------------
+
+def _rdp_hel(points: np.ndarray, epsilon: float) -> np.ndarray:
+    """RDP simplification returning kept indices (shared with spall module)."""
+    if len(points) < 3:
+        return np.arange(len(points))
+
+    def _perp(pt, s, e):
+        if np.allclose(s, e):
+            return np.linalg.norm(pt - s)
+        d = e - s
+        proj = s + np.dot(pt - s, d) / np.dot(d, d) * d
+        return np.linalg.norm(pt - proj)
+
+    def _rec(pts, eps, off=0):
+        if len(pts) < 3:
+            return list(range(off, off + len(pts)))
+        dists = [_perp(pts[i], pts[0], pts[-1]) for i in range(1, len(pts) - 1)]
+        mx = max(dists)
+        mi = dists.index(mx) + 1
+        if mx > eps:
+            L = _rec(pts[: mi + 1], eps, off)
+            R = _rec(pts[mi:], eps, off + mi)
+            return L[:-1] + R
+        return [off, off + len(pts) - 1]
+
+    return np.array(sorted(set(_rec(points, epsilon))))
+
+
+def hel_detection_rdp_hybrid(
+    time_ns,
+    velocity,
+    uncertainty,
+    *,
+    hel_start_ns: float = 0.0,
+    hel_end_ns: float | None = None,
+    min_velocity: float = 10.0,
+    density: float | None = None,
+    acoustic_velocity: float | None = None,
+    C_L: float | None = None,
+    rdp_epsilon: float = 1.25,
+    slope_drop_ratio: float = 0.9,
+    min_plateau_duration_ns: float = 0.5,
+    min_points: int = 10,
+) -> HELResult:
+    """RDP + Linear Hybrid HEL detection (HELIX Toolbox v2 algorithm).
+
+    This method is more robust than the gradient approach because it fits
+    linear regressions on the *raw* data rather than on a smoothed gradient,
+    and applies explicit physics gating criteria.
+
+    Algorithm
+    ---------
+    1. **Time-zero alignment**: clip data to ``[hel_start_ns, hel_end_ns]``.
+    2. **Uncertainty filtering**: discard points where ``|unc|/max|vel| ≥ 1``.
+    3. **RDP simplification**: obtain candidate knee points.
+    4. For each candidate knee point:
+
+       a. Fit a line to the *rise* segment (raw data before the knee).
+       b. Fit a line to the *plateau* segment (raw data after the knee).
+       c. Physics validation:
+
+          * Rise slope must be positive.
+          * ``plateau_slope < (1 − slope_drop_ratio) × rise_slope``
+            (default: plateau slope < 10 % of rise slope).
+          * Plateau must last ≥ ``min_plateau_duration_ns`` ns.
+          * Plateau mean velocity must exceed ``min_velocity``.
+          * Elastic strain rate must be positive.
+
+    5. Accept the first knee that passes all checks.
+
+    Parameters
+    ----------
+    time_ns:
+        Time array in **nanoseconds**.
+    velocity:
+        Smoothed velocity array  [m/s].
+    uncertainty:
+        Velocity uncertainty array  [m/s].
+    hel_start_ns, hel_end_ns:
+        Search window  [ns].
+    min_velocity:
+        Minimum accepted HEL plateau velocity  [m/s].
+    density:
+        Material density  [kg/m³] — needed for stress output.
+    acoustic_velocity:
+        Bulk wave speed  [m/s] — needed for stress output.
+    C_L:
+        Longitudinal wave speed  [m/s] — used for strain rate;
+        falls back to ``acoustic_velocity``.
+    rdp_epsilon:
+        RDP tolerance  [m/s].
+    slope_drop_ratio:
+        Fraction of rise slope that the plateau slope must fall below.
+        E.g. 0.9 means ``|plateau_slope| < 10 %`` of ``|rise_slope|``.
+    min_plateau_duration_ns:
+        Minimum plateau duration  [ns].
+    min_points:
+        Minimum number of raw data points in the plateau segment.
+
+    Returns
+    -------
+    HELResult
+        Falls back to ``hel_detection(..., method="gradient")`` if no knee
+        passes the physics checks.
+    """
+    time_ns = np.asarray(time_ns, dtype=float)
+    velocity = np.asarray(velocity, dtype=float)
+    uncertainty = np.asarray(uncertainty, dtype=float)
+
+    # ------------------------------------------------------------------ #
+    # 1–2  Filter + window                                                  #
+    # ------------------------------------------------------------------ #
+    valid = ~np.isnan(velocity)
+    if valid.sum() <= 5:
+        return HELResult(ok=False, error_message="insufficient valid data for HEL (RDP method)")
+
+    t_c = time_ns[valid]
+    v_c = velocity[valid]
+    u_c = uncertainty[valid]
+
+    max_v = np.max(np.abs(v_c))
+    rel_unc = np.abs(u_c) / max(max_v, 1e-9)
+    good = rel_unc < 1.0
+    if good.sum() >= 10:
+        t_c, v_c, u_c = t_c[good], v_c[good], u_c[good]
+
+    win = t_c >= hel_start_ns
+    if hel_end_ns is not None and hel_end_ns > hel_start_ns:
+        win &= t_c <= hel_end_ns
+    if win.sum() < 10:
+        win = np.ones(len(t_c), dtype=bool)
+
+    t_w, v_w, u_w = t_c[win], v_c[win], u_c[win]
+    if len(t_w) < 10:
+        return HELResult(ok=False, method="rdp_linear",
+                         error_message="insufficient data in HEL window (RDP method)")
+
+    # ------------------------------------------------------------------ #
+    # 3  RDP simplification                                                 #
+    # ------------------------------------------------------------------ #
+    pts = np.column_stack((t_w, v_w))
+    rdp_idx = _rdp_hel(pts, rdp_epsilon)
+    rdp_pts = pts[rdp_idx]
+
+    if len(rdp_pts) < 3:
+        return HELResult(ok=False, method="rdp_linear",
+                         error_message="RDP produced fewer than 3 vertices — trace too smooth")
+
+    # ------------------------------------------------------------------ #
+    # 4  Candidate knee scan                                                #
+    # ------------------------------------------------------------------ #
+    if C_L is None:
+        C_L = acoustic_velocity
+
+    best: HELResult | None = None
+
+    for ki in range(1, len(rdp_pts) - 1):
+        knee_t = float(rdp_pts[ki, 0])
+
+        # Rise segment: raw points up to and including the knee
+        rise_mask = t_w <= knee_t
+        plat_mask = t_w >= knee_t
+        if rise_mask.sum() < 3 or plat_mask.sum() < min_points:
+            continue
+
+        # Linear fit on raw data
+        try:
+            r_slope, _, _, _, _ = linregress(t_w[rise_mask], v_w[rise_mask])
+            p_slope, _, _, _, _ = linregress(t_w[plat_mask], v_w[plat_mask])
+        except Exception:
+            continue
+
+        # Physics gate: positive rise, flat/negative plateau
+        if r_slope <= 0:
+            continue
+        if abs(p_slope) >= (1.0 - slope_drop_ratio) * abs(r_slope):
+            continue
+
+        # Plateau duration
+        plat_duration = float(t_w[plat_mask][-1] - t_w[plat_mask][0])
+        if plat_duration < min_plateau_duration_ns:
+            continue
+
+        # HEL velocity (mean of plateau raw data)
+        fsv = float(np.mean(v_w[plat_mask]))
+        if abs(fsv) < min_velocity:
+            continue
+
+        # Strain rate (must be positive)
+        if C_L is not None:
+            # reference point: first window sample
+            U_0 = float(v_w[0])
+            t_0 = float(t_w[0])
+            sr = elastic_shock_strain_rate(C_L, fsv, U_0, knee_t, t_0)
+            if sr <= 0:
+                continue
+        else:
+            sr = np.nan
+
+        # Uncertainty: mean uncertainty of plateau raw points
+        u_unc = float(np.mean(np.abs(u_w[plat_mask])))
+
+        # Stress
+        strength_gpa = np.nan
+        unc_gpa = np.nan
+        if density is not None and acoustic_velocity is not None:
+            strength_gpa = 0.5 * density * acoustic_velocity * abs(fsv) / 1e9
+            unc_gpa = 0.5 * density * acoustic_velocity * u_unc / 1e9
+
+        best = HELResult(
+            ok=True,
+            method="rdp_linear",
+            strength_gpa=strength_gpa,
+            uncertainty_gpa=unc_gpa,
+            free_surface_velocity=fsv,
+            time_detection_ns=knee_t,
+            consecutive_points=int(plat_mask.sum()),
+            segment_duration_ns=plat_duration,
+            strain_rate=sr,
+            rise_slope=float(r_slope),
+            plateau_slope=float(p_slope),
+            rdp_knee_time_ns=knee_t,
+            rdp_points=rdp_pts,
+            time_window=t_w,
+            velocity_window=v_w,
+        )
+        break  # accept first valid knee
+
+    if best is not None:
+        logger.info(
+            "[RDP-Linear] HEL %.3f GPa at %.1f ns (rise=%.2f, plateau=%.2f m/s/ns)",
+            best.strength_gpa,
+            best.time_detection_ns,
+            best.rise_slope,
+            best.plateau_slope,
+        )
+        return best
+
+    # ------------------------------------------------------------------ #
+    # 5  Fall back to gradient method                                       #
+    # ------------------------------------------------------------------ #
+    logger.info("[RDP-Linear] No valid HEL knee found — falling back to gradient method")
+    result = hel_detection(
+        time_ns, velocity, uncertainty,
+        hel_start_ns=hel_start_ns,
+        hel_end_ns=hel_end_ns,
+        min_velocity=min_velocity,
+        density=density,
+        acoustic_velocity=acoustic_velocity,
+        C_L=C_L,
+        method="gradient",
+    )
+    if not result.ok and result.error_message and "rdp" not in result.error_message.lower():
+        result.error_message = "RDP+Linear: no valid knee; gradient fallback: " + (result.error_message or "no plateau")
+    result.method = "gradient_fallback"
+    return result
