@@ -215,7 +215,7 @@ def alpss_main(**inputs):
         "method": "none", "S": np.nan,
     }
     peak_velocity = sa_out.get("v_max_comp", np.nan)
-    if not np.isnan(peak_velocity):
+    if np.isfinite(float(peak_velocity)):
         peak_vel_unc = sa_out.get("peak_velocity_vel_uncert", 0.0) or 0.0
         shock_result = calculate_shock_stress(
             density=inputs.get("density", np.nan),
